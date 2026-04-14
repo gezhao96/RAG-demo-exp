@@ -1,0 +1,162 @@
+# Real-time FPGA Implementation of CNN-based Distributed Fiber Optic Vibration Event Recognition Method
+
+Zhongyao Luo, Zhao Ge, Hao Wu, Ming Tang
+
+National Laboratory for Optoelectronics (WNLO) &
+
+National Engineering Laboratory for Next Generation Internet Access System
+
+School of Optical and Electronic Information
+
+Huazhong University of Science and Technology
+
+Wuhan, China
+
+zluo@hust.edu.cn, d202280977@hust.edu.cn, wuhaoboom@hust.edu.cn, tangming@mail.hust.edu.cn
+
+Abstract—utilizing optical fibers to detect and pinpoint vibrations, Distributed Optical Fiber Vibration Sensing (DVS) technology provides real-time monitoring and surveillance of wide-reaching areas. This field has been leveraging Convolutional Neural Networks (CNN). Recently, a study has accomplished endto-end vibration event recognition, enabling utilization of CNNbased DVS algorithms as real-time embedded system for edge computing in practical application situations. Considering the power consumption of central processing unit (CPU) and graphics processing unit (GPU), and the inflexibility of applicationspecific integrated circuit (ASIC), field-Programmable gate array (FPGA) is the optimal computing platform for the system. This paper proposes to compress pre-trained network and adopt a novel hardware structure, to design a fully on-chip, pipelined inference accelerator for CNN-based DVS algorithm, without fine tuning or re-training. This design allows for real-time processing with low power consumption and system requirement. An examination has been executed on an existing DVS algorithm based on a 40-layer CNN model comprising 2.7 million parameters. It is completely implemented on-chip, pipelined, with no reduction in accuracy.
+
+Index Terms—FPGA, convolution neural networks, distributed vibration sensing, pruning, quantization
+
+# I. INTRODUCTION
+
+Distributed optical fiber vibration sensing technology (DVS) enable continuous monitor for vibration events along the fiber at the lengths of dozens of kilometers, which has been applied in the various fields including geophysical [1]. Since 2018, convolutional neural network (CNN) has been employed for DVS event recognition [2]. The latest research has revealed the possibility for CNN-Based DVS algorithm to achieve endto-end interference vibration recognition, which is to process and analyze sensing data collected from optical fiber directly, without need for buffering all sampled data [3].
+
+Based on previous work on embedded optical time-domain reflectometry (OTDR) system [4], it shows that it is feasible to assemble a total system that can effectively detect vibration events in real-time. Taking into account real-world situations, such as geophysical, the ideal system would be an embedded system, allowing for edge computing. It brings the
+
+demand for energy efficiency and costs, which makes graphics processing unit (GPU), which have high prices and energy consumption, unsuitable for the inference [5], a bad choice. In light of the quickly changing CNN algorithms, applicationspecific integrated circuit (ASIC) like Eyeriss [6], with their constrained customizability, are not an ideal choice. Field-Programmable gate array (FPGA), with a low cost and a low power consumption in comparison to GPUs, and a high flexibility in comparison to ASICs, become the primary option. Additionally, algorithm implementation utilizing pipeline architecture on FPGA allows for real-time processing. The expected embedded system is illustrated in figure1.
+
+![](images/706b586b83afbb3f9d3e52e360eeea23490293d4d5aee8c8b81684a10a43a4b0.jpg)  
+Fig. 1: Schematic diagram of DVS embedded system. CI: communication interface, used to communicate with other devices. ADC: analog-to-digital converter. FUT: fiber under test.
+
+To this point, the remaining task is the FPGA implementation of CNN, which is also a popular research topic in recent years. Conventional FPGA-based CNN accelerator typically involves dynamic random-access memory (DRAM) for storage, introducing high energy consumption [7]. With the goal of further decreasing energy consumption and system requirement, it is obvious that the need for DRAM should be eliminated, that is, the network should be implemented using solely on-chip memory. To accomplish this, the idea of two well-known techniques, pruning and quantization, can be utilized [8].
+
+Drawing on the concept of ShiftAddNet [9], this paper combines pruning and quantization to suggest replacing convolution layers in the network with a combination of shift and add layers, and substituting weights with the numbers of bits to be shifted in each shift layer, with the intention of minimizing the size of the network and reducing its hardware requirements. The proposed scheme is intended to be carried out on a pre-training model of CNN, without fine-tuning of the network structure, and without a retraining program, which clearly requires less time and work than conventional solutions [7]. It has been evaluated against an existing CNN-based DVS algorithm. The pre-trained CNN model and original dataset are provided by the author [3].
+
+# II. IMPLEMENTATION SCHEME
+
+# A. Hardware Structure
+
+a) Basic Convolution Layer Structure: The operation of a neuron in a conventional convolution layer can be expressed as below, with $o$ being the output, i being the elements in the input matrix, and $w$ being the elements in the weight matrix.
+
+$$
+o = \sum i \cdot w \tag {1}
+$$
+
+The operation can be seen as a combination of elementwise multiplication between the input data matrix and weight matrix, and subsequent summation of all the products. It is evident that the arithmetic operations mainly involved here are multiplication and addition.
+
+b) Shift-Add Structure: A signed binary number can be understood as the addition of multiple numbers which are powers of two. It is then multiplied by $s \in \{ - 1 , 1 \}$ to represent the sign, as shown in equation below. $2 ^ { p }$ can be seen as bit-wise shift operations, with the integer $\mathsf { p }$ representing the number of shifts and shift direction. The shift direction is either right, when $p < 0$ , or left, when $p > 0$ . Figure 2 gives an example of shift operation.
+
+$$
+w = s \cdot \sum 2 ^ {p} \tag {2}
+$$
+
+The convolution equation can be expressed as follows. It shows that the neuronal operation can be divided into series of shifting and addition operations.
+
+$$
+o = \sum s \cdot i \cdot \sum 2 ^ {p} = \sum s \cdot \sum i \cdot 2 ^ {p} \tag {3}
+$$
+
+![](images/0e93d6e6d97592bfc30cfc1638af4768c01fda43e64c249fc3ea31d9a7e533e6.jpg)  
+Fig. 2: Example of shift operation.
+
+In contrast to the shift and add layer approach suggested in ShiftAddNet [9], the design proposed in this paper employs multiple shift layers. Element-wise addition layers are presented to carry out element-wise addition between shift layer outputs. All the products are summed together in the global add layer, based on the sign data. These layers are arranged in the same way as in the equation 3. The proposed design should contain N shift layers accompanied by N-1 element-wise accumulation layers and one global add layer. (For brevity, only the quantity of shift layers will be referred in the rest parts of the paper.) An example of the proposed Shift-Add structure with two shift layers is illustrated in figure 3 It is evident that, with an adequate number of shift layers, the recommended structure can attain the same expressive capability as a standard convolution layer.
+
+From hardware perspective, the operations involved are shifting and addition. Shift operation offers faster computation speed and lower energy expenditure when compared to multiplication [10]. Additionally, the parallelism of traditional FPGA-based CNN accelerators is often constrained by the number of multipliers which necessitates the utilization of DSP resources. Thus, the computations of layers are typically performed in time-multiplexed ways, which limits the overall throughput of the accelerator [7].
+
+A simple FPGA-based CNN accelerator is shown in figure 4. If a one-dimensional convolution layer with 3 weights is implemented using the accelerator, the resulting implementation will be fully-parallel, with each weight assigned to an individual MAC. The input data will be sequentially processed in each MAC to obtain the final result. It means that the implementation is pipelined, and able to continuously process the input data, while keeping producing corresponding results, achieving real-time computation naturally. If the convolution layer has more weights, the computation process will be timemultiplexed. The input data is first computed with MACs using first 3 weights. The result is stored in block randomaccess memory (BRAM) for next round of computation with next set of 3 weights read from DRAM. The process repeats until all weights have been iterated through. To meet the requirement for pipelining, it brings strict timing constraints for each operation, so that the total computation time is less then the time interval between input data.
+
+The presented design involves no DSP slices, which means
+
+![](images/a885f85d05eaae9d9cb4b5c40289842b9290f74794cdd70e8488c84d2c2b9e98.jpg)  
+Fig. 3: Example of Shift-Add structure with two shift layers. Parameters in shift layer are randomly generated used for demonstration. X,Y: input matrix. O: output data matrix from add layer.
+
+![](images/11196e64a3d1fd4904115ffee4b8f43f2c03e64265d56fea951539cf5cafc2dd.jpg)  
+Fig. 4: Simple FPGA-based CNN accelerator structure
+
+that the number of Shift-Add unit implemented on chip is not limited by DSP resources, bringing higher level of parallelism, enabling fully parallel implementation for network with more weights. Furthermore, with higher computation speed, the network implemented using Shift-Add structure can meet the timing requirement for pipelining more easily. Accordingly, it is feasible to integrate the entire network onto the chip, using proposed design, in a pipelined manner, allowing for real-time processing of input data.
+
+# B. Network Compression
+
+Pruning is done on the basis that the network is generally over-parameterized, which indicates that there are redundancies in the parameters of the network, which are able to be eliminated. This procedure of discarding redundant information is known as pruning. Quantization involves transforming data to a restricted range which can be represented with fewer bits, while keeping a minimum quantization error [8]. Data is typically mapped with 8 bits of integer, because the underlying operations in the integer range are much simpler than the operations in the floating-point range, thereby reducing the need for resources and speeding up computation [11].
+
+If the aforementioned structure is adopted to substitute convolution layers, the weights should be replaced with multiple integers, as the $p$ in equation 2, so that they can be easily used by the shift layers.
+
+A simple encoding system is used here, to simplify the decoding process, where the parameters are represented by numbers, which correspond to the relative position of zeros or ones, depending on the majority digit of the number. For example, the unsigned binary number 1110101 can be expressed as two integers, 2 and 4, in addition to the details of the majority digit in the figure and its width.
+
+utilizing the encoding process, the parameter is mapped into multiple integers in relatively small data range with lower requirement for number of bits used for representation. For example, a 32-bit floating-point figure can be characterized with multiple five-bit integers. However, in the worst case, it may demand 16 five-bit variables to characterize each parameter, with the requirement for 16 shift layers to substitute one original convolution layer. It is evident that encoding can fulfill the role of a compression scheme for parameters, provided that the number of variables used is restricted. The limitation in this example would be $\lfloor 3 2 \div 6 \rfloor = 5$ .
+
+Here, the concept of pruning is adopted, not towards the nodes in the network structure, but the number of variables used to represent parameters in the convolutional layers. An efficient approach is to evaluate all possible permutations of the number of variables involved in the different layers on the test dataset, in order to identify the combination with the best performance. Since pruning is considered to be a process removing redundant information from the model, it is better to first use the same number of variables to represent parameters in different convolution layers, then to change the number and to evaluate the models. It is advised to select the most suitable model based on the number of shift layers required and its performance. Based on the selected model, new models are derived through changing the number of variables used in different convolution layers, and then evaluated, searching for a better model. In order to make the most efficient use of our time and efforts, it is suggested to cease the process when a suitable model is attained.
+
+# III. RESULTS AND ANALYSIS
+
+The scheme is evaluated on a CNN-based DVS algorithm designed for recognition of vibration events, including ones
+
+caused by excavator, hammer, and air pick [3]. The algorithm is based on a direct-detection phase-sensitive OTDR ( $\varphi$ -OTDR), as shown in figure 5. The provided datasets are sampled on a 12.5-meter-long fiber at $8 0 ~ \mathrm { M S a / s }$ , in a system with a spatial resolution of 5 meters and a pulse repetition rate of 1kHz. The algorithm first accumulates and averages over every four samples. Then it takes the resulting data in 256 ms as the input for the CNN used, which means that the input data matrix is at the size of $2 5 6 \times 1 1$ .
+
+![](images/9a2ece28b778c1efe8e98f61edbd897fcc60afca46d3c283c5f4439169a1bca4.jpg)  
+Fig. 5: $\varphi$ -OTDR system structure. LS: light source, SOA: semiconductor optical amplifier, AWG: arbitrary waveform generator, EDFA: erbium-doped fiber amplifier, FUT: fiber under test, APD: avalanche photodetector, DPU: data processing unit
+
+Hardware design is implemented using Xilinx HLS and tested on ZCU15eg FPGA chip. The chip provides total BRAM of 26.2 Mb and maximum distributed ram of 11.3 Mb, giving 37.3 Mb maximum on-chip storage. Only FPGA part is used in this work.
+
+# A. Compression Result
+
+To begin with, each convolution layer is substituted with the same number of shift layers. Models of varying number of shift layers are then measured against the test dataset. The results are shown in table I. The results indicate that 6 layers are sufficient for achieving the same results as the initial model, which indicates that six variables are enough for storing all the necessary information. The models with 2, 4, and 5 shift layers provide equivalent results, implying that the two-shiftlayer model holds most essential information.
+
+Based on the selected model, new models are derived through choosing different convolution layer to be replaced by only one shift layer, and then evaluated on test dataset. The result is shown in table II. The original network has fifteen convolutional layers and one fully-connected layer. Therefore, the Layer Number in the table shows which layer is chosen. The table indicates that models with convolution layer 3, 4, or 6 substituted by a single shift layer give an enhanced performance in comparison with the original network. The model with the third convolution layer substituted by one shift layer, and the rest altered with two shift layers has been tested on the train dataset. The result as depicted in the table III demonstrates that the majority of the information eliminated during the process is redundant.
+
+After a thorough investigation of the value range of the variables employed to characterize the parameters in the original model, 6-bit signed integer format is adopted to depict the variables. Up to this stage, the exact size of the two-shiftlayer model can be precisely calculated. The total number of parameters in original model is 2777283. The parameter number of the third convolution layer is 36864. The total size of the compressed model is $2 7 7 7 2 8 3 \times 1 2 - 3 6 8 6 4 \times 6 =$ $3 3 1 0 6 2 1 2 b i t s \approx 3 1 . 5 7 M b$ , less than the maximum storage size of 37.6 Mb of target FPGA. The original model size is 10.59 MB. Thus, the compression rate is $3 7 . 2 6 \%$ . It is evident that the selected model meets the fundamental requirement, thus making it the final model.
+
+TABLE I: Recognition Result on Test Dataset   
+
+<table><tr><td rowspan="2">Number of Shift Layer used</td><td colspan="3">Identification Category/%</td><td rowspan="2">Recognition Rate/%</td></tr><tr><td>Excavator</td><td>Hammer</td><td>Air Pick</td></tr><tr><td>Original Network</td><td>100</td><td>97.76</td><td>99.70</td><td>99.20</td></tr><tr><td>1</td><td>100</td><td>93.28</td><td>82.42</td><td>91.31</td></tr><tr><td>2</td><td>100</td><td>97.39</td><td>99.70</td><td>99.09</td></tr><tr><td>3</td><td>100</td><td>95.90</td><td>99.70</td><td>98.63</td></tr><tr><td>4</td><td>100</td><td>97.39</td><td>99.70</td><td>99.09</td></tr><tr><td>5</td><td>100</td><td>97.39</td><td>99.70</td><td>99.09</td></tr><tr><td>6</td><td>100</td><td>97.76</td><td>99.70</td><td>99.20</td></tr><tr><td>7</td><td>100</td><td>97.76</td><td>99.70</td><td>99.20</td></tr><tr><td>8</td><td>100</td><td>97.76</td><td>99.70</td><td>99.20</td></tr></table>
+
+TABLE II: Recognition Result on Test Dataset   
+
+<table><tr><td rowspan="2">Layer Number</td><td colspan="3">Identification Category/%</td><td rowspan="2">Recognition Rate/%</td></tr><tr><td>Excavator</td><td>Hammer</td><td>Air Pick</td></tr><tr><td>Original Network</td><td>100</td><td>97.76</td><td>99.70</td><td>99.20</td></tr><tr><td>1</td><td>100</td><td>98.88</td><td>79.90</td><td>88.91</td></tr><tr><td>2</td><td>100</td><td>97.76</td><td>98.79</td><td>98.86</td></tr><tr><td>5</td><td>100</td><td>97.76</td><td>99.70</td><td>99.20</td></tr><tr><td>3,4,6</td><td>100</td><td>98.13</td><td>99.70</td><td>99.31</td></tr><tr><td>7-8, 10-11</td><td>100</td><td>97.76</td><td>99.39</td><td>99.09</td></tr><tr><td>9, 12-16</td><td>100</td><td>97.39</td><td>99.70</td><td>99.09</td></tr></table>
+
+TABLE III: Recognition Result on Train Dataset   
+
+<table><tr><td rowspan="2">Class</td><td colspan="3">Identification Category/%</td><td rowspan="2">Recognition Rate/%</td></tr><tr><td>Excavator</td><td>Hammer</td><td>Air Pick</td></tr><tr><td>Original Network</td><td>100</td><td>99.97</td><td>100</td><td>99.99</td></tr><tr><td>Compressed Network</td><td>100</td><td>99.97</td><td>100</td><td>99.99</td></tr></table>
+
+# B. Hardware Implementation
+
+A library featuring templates of core layers has been created for this task. The compressed network is less than the upper boundary of on-chip storage, yet still greater than the total BRAM size. Consequently, the additional information is stored using distributed ram implemented as LUTRAM.
+
+The design is pipelined, continuously taking in fourteen-bit sensing data, while producing the recognition result directly. The diagram in figure 6, shows the hardware structure of network with reference to the original network structure. The implementation result of the complete design given by Vivado
+
+![](images/59475ff993a4dda727e6c39604d3e949cf075b3ee70b0cc550d1d8f2e987ed42.jpg)  
+(a) Network Structure
+
+![](images/299c1044391e71bd9d44317b001f8d60d854c764f04656c62bd88337f7b44414.jpg)  
+(b) Hardware Structure   
+Fig. 6: Structure of the design. Only the first 7 layers are shown here, since the remaining part are in similar structure.
+
+is shown in table IV. The total number of clock cycle is 99313805, while the design is running at 250 Mhz, giving the total latency of around 397 ms. The total on-chip energy expenditure is 10.023W, which is consistent with the output power capacity of the majority of power banks available [12]. Moreover, the system requirement of the chip can be diminished beyond the typical minimal system, since there is no need for DRAM [13].
+
+TABLE IV: Hardware Resource Utilized   
+
+<table><tr><td>Resource</td><td>Utilization</td><td>Available</td><td>Utilization/%</td></tr><tr><td>LUT</td><td>155380</td><td>341280</td><td>45.5286</td></tr><tr><td>LUTRAM</td><td>6449</td><td>184320</td><td>3.4988065</td></tr><tr><td>FF</td><td>25208</td><td>682560</td><td>3.6931553</td></tr><tr><td>BRAM</td><td>733.5</td><td>744</td><td>98.588715</td></tr><tr><td>IO</td><td>2</td><td>328</td><td>0.60975605</td></tr><tr><td>BUFG</td><td>3</td><td>404</td><td>0.7425743</td></tr><tr><td>PLL</td><td>1</td><td>8</td><td>12.5</td></tr></table>
+
+After conducting an analysis of the design, the primary factor impeding performance is the buffering system. The present design adopts a straightforward buffering mechanism that caches all outcomes from the preceding layer and then injects the data into the computation, leading to a considerable increase in the total delay.
+
+# CONCLUSION
+
+This paper proposes a scheme for realizing a fully on-chip, pipelined, FPGA-based implementation of CNN-based DVS algorithms. The proposed scheme is targeted to pre-trained network, involves no fine tuning or re-training. An end-to-end CNN-based DVS algorithm is utilized to examine the scheme. The result reveals the potential of an embedded DVS system for edge computing in practical application.
+
+# REFERENCES
+
+[1] K. Miah and D. K. Potter, “A review of hybrid fiber-optic distributed simultaneous vibration and temperature sensing technology and its geophysical applications,” Sensors (Basel, Switzerland), vol. 17, 2017.
+
+[2] C. Xu, J. Guan, M. Bao, J. Lu, and W. Ye, “Pattern recognition based on time-frequency analysis and convolutional neural networks for vibrational events in phi-OTDR,” Optical Engineering, vol. 57, no. 1, p. 016103, 2018.   
+[3] Z. Ge, H. Wu, C. Zhao, and M. Tang, “High-accuracy event classification of distributed optical fiber vibration sensing based on time–space analysis,” Sensors (Basel, Switzerland), vol. 22, 2022.   
+[4] H. Schmuck, M. Straub, R. Bonk, J. Hehmann, and T. Pfeiffer, “Embedded otdr measurement range extension for future metro-access networks employing in-line soas,” in 2014 The European Conference on Optical Communication (ECOC), pp. 1–3, 2014.   
+[5] T. Van Chu, R. Kitajima, K. Kawamura, J. Yu, and M. Motomura, “A high-performance and flexible fpga inference accelerator for decision forests based on prior feature space partitioning,” in 2021 International Conference on Field-Programmable Technology (ICFPT), pp. 1–10, 2021.   
+[6] Y.-H. Chen, T. Krishna, J. S. Emer, and V. Sze, “Eyeriss: An energyefficient reconfigurable accelerator for deep convolutional neural networks,” IEEE Journal of Solid-State Circuits, vol. 52, no. 1, pp. 127– 138, 2017.   
+[7] J. Meng, S. K. Venkataramanaiah, C. Zhou, P. Hansen, P. Whatmough, and J.-s. Seo, “Fixyfpga: Efficient fpga accelerator for deep neural networks with high element-wise sparsity and without external memory access,” in 2021 31st International Conference on Field-Programmable Logic and Applications (FPL), pp. 9–16, 2021.   
+[8] V. Sze, Y.-H. Chen, T.-J. Yang, and J. S. Emer, “Efficient processing of deep neural networks: A tutorial and survey,” Proceedings of the IEEE, vol. 105, no. 12, pp. 2295–2329, 2017.   
+[9] H. You, X. Chen, Y. Zhang, C. Li, S. Li, Z. Liu, Z. Wang, and Y. Lin, “Shiftaddnet: A hardware-inspired deep network,” in Advances in Neural Information Processing Systems (H. Larochelle, M. Ranzato, R. Hadsell, M. Balcan, and H. Lin, eds.), vol. 33, pp. 2771–2783, Curran Associates, Inc., 2020.   
+[10] M. Elhoushi, Z. Chen, F. Shafiq, Y. H. Tian, and J. Y. Li, “Deepshift: Towards multiplication-less neural networks,” in 2021 IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW), pp. 2359–2368, 2021.   
+[11] B. Jacob, S. Kligys, B. Chen, M. Zhu, M. Tang, A. Howard, H. Adam, and D. Kalenichenko, “Quantization and training of neural networks for efficient integer-arithmetic-only inference,” in 2018 IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 2704–2713, 2018.   
+[12] L. Huawei Technologies Co., “Huawei power bank 10000mah (max 18w) usb-c specification,” 2023.   
+[13] L. ALINX Electronic Technology (Shanghai) Co., “Xilinx kintex ultrascale fpga core board xcku040,” 2023.
