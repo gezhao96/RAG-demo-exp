@@ -38,8 +38,8 @@ RAG/
 
 使用 conda（推荐）：
 ```bash
-conda create -n gezhao python=3.11 -y
-conda activate gezhao
+conda create -n rag python=3.11 -y
+conda activate rag
 ```
 
 或使用 venv：
@@ -71,11 +71,9 @@ OPENAI_MODEL=deepseek-chat
 - `OPENAI_API_KEY`: 你的 API 密钥（必需）
 - `OPENAI_BASE_URL`: API 地址，支持 OpenAI 兼容接口
   - DeepSeek: `https://api.deepseek.com/v1`
-  - 通义千问: `https://dashscope.aliyuncs.com/compatible-mode/v1`
   - OpenAI: `https://api.openai.com/v1`
 - `OPENAI_MODEL`: 模型名称
   - DeepSeek: `deepseek-chat`
-  - 通义千问: `qwen-plus`
   - OpenAI: `gpt-4o-mini`
 
 ### 4. 准备文档
